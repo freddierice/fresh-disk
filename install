@@ -1,0 +1,100 @@
+#!/bin/bash
+
+#####################################
+## CONFIGURATIONS ###################
+#####################################
+ROOT_DEV=/dev/sda3
+BOOT_DEV=/dev/sda7
+KEY_DEV=/dev/sdb
+
+#####################################
+## END OF CONFIGURATIONS ############
+#####################################
+
+# TODO: ask for user input once done debuging
+
+echo "WARNING: each of these locations will be wiped and data recovery"
+echo "will be very difficult: "
+echo "  key   $KEY_DEV"
+echo "  boot  $BOOT_DEV"
+echo "  root  $ROOT_DEV"
+echo "do you want to overwrite each of these locations? (YES/no): "
+read resp
+
+if [ "x$resp" != "xYES" ]; then
+    exit 1
+fi
+
+# check for programs used in the script
+type pv >/dev/null 2>&1 || { echo >&2 "pv is not installed."; exit 1; }
+type cryptsetup >/dev/null 2>&1 || { echo >&2 "cryptsetup is not installed."; exit 1; }
+type openssl >/dev/null 2>&1 || { echo >&2 "openssl is not installed."; exit 1; }
+type xxd >/dev/null 2>&1 || { echo >&2 "xxd is not installed."; exit 1; }
+type blockdev >/dev/null 2>&1 || { echo >&2 "blockdev is not installed."; exit 1; }
+
+# sanity checks
+if [ "x$(whoami)" != "xroot" ]; then
+    echo "script must be run as root."
+    exit 1
+fi
+
+if [ ! -e "$ROOT_DEV" ]; then
+    echo "root device $ROOT_DEV does not exist."
+    exit 1
+fi
+
+if [ ! -e "$BOOT_DEV" ]; then
+    echo "boot device $BOOT_DEV does not exist."
+    exit 1
+fi
+
+# make sure the key is a full disk
+echo $KEY_DEV | grep -q "[0-9]"
+if [ $? -eq 0 ]; then
+    echo "key device $KEY_DEV is a partition: expected full disk."
+    exit 1
+fi
+
+# get the device sizes
+ROOT_DEV_SIZE=$(blockdev --getsize64 "$ROOT_DEV")
+BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
+
+echo "removing all disks from use"
+umount_all() {
+    for line in $(mount | grep "^$1[0-9]\+ "); do
+        mpoint="$(echo \"$line\" | cut -d' ' -f3)"
+        mdev="$(echo \"$line\" | cut -d' ' -f1)"
+        umount "$m"
+        if [ $? -neq 0 ]; then
+            echo "could not umount $mdev from $mpoint."
+            exit 1
+        fi
+    done
+}
+umount_all "$KEY_DEV" && umount_all "$ROOT_DEV" && umount_all "$BOOT_DEV"
+if [ $? -neq 0 ]; then
+    echo "could not unmount the disks from the filesystem. to avoid unexpected"
+    echo "errors, unmount them before running this script."
+    exit 1
+fi
+
+echo "formatting $KEY_DEV to msdos, one partition"
+dd if=/dev/zero bs=512 of="$KEY_DEV"
+yes | parted "$KEY_DEV" mklabel msdos
+yes | parted "$KEY_DEV" unit "%" mkpart primary ext2 0 100
+
+echo "overwriting $ROOT_DEV with random data."
+openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$ROOT_DEV_SIZE" -S | dd of="$ROOT_DEV" bs=8M 2>/dev/null
+
+echo "overwriting $BOOT_DEV with random data."
+openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$BOOT_DEV_SIZE" -S | dd of="$BOOT_DEV" bs=8M 2>/dev/null
+
+# TODO: fix below
+echo "creating a random key"
+mkdir ./mnt
+mount $KEY_DEV ./mnt
+rm -f ./mnt/key
+dd if=/dev/urandom bs=32 count=1 of=./mnt/key
+
+echo "creating an encrypted volume on $ROOT_DEV"
+#cryptsetup luksFormat --hash sha256 --cipher aes-cbc-essiv:sha256 --iter-time $ITER_TIME "$ROOT_DEV" ./mnt/key
