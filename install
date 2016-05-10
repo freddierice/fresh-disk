@@ -6,6 +6,7 @@
 ROOT_DEV=/dev/sda3
 BOOT_DEV=/dev/sda7
 KEY_DEV=/dev/sdb
+ITER_TIME=8
 
 #####################################
 ## END OF CONFIGURATIONS ############
@@ -50,7 +51,7 @@ fi
 
 # make sure the key is a full disk
 echo $KEY_DEV | grep -q "[0-9]"
-if [ $? -eq 0 ]; then
+if [ $? == 0 ]; then
     echo "key device $KEY_DEV is a partition: expected full disk."
     exit 1
 fi
@@ -61,33 +62,34 @@ BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
 
 echo "removing all disks from use"
 umount_all() {
-    for line in $(mount | grep "^$1[0-9]\+ "); do
+    mount | grep "^$1[0-9]\+ " | \
+    while read line; do
         mpoint="$(echo \"$line\" | cut -d' ' -f3)"
         mdev="$(echo \"$line\" | cut -d' ' -f1)"
-        umount "$m"
-        if [ $? -neq 0 ]; then
+        umount "$mpoint"
+        if [ $? != 0 ]; then
             echo "could not umount $mdev from $mpoint."
             exit 1
         fi
     done
 }
 umount_all "$KEY_DEV" && umount_all "$ROOT_DEV" && umount_all "$BOOT_DEV"
-if [ $? -neq 0 ]; then
+if [ $? != 0 ]; then
     echo "could not unmount the disks from the filesystem. to avoid unexpected"
     echo "errors, unmount them before running this script."
     exit 1
 fi
 
 echo "formatting $KEY_DEV to msdos, one partition"
-dd if=/dev/zero bs=512 of="$KEY_DEV"
+dd if=/dev/zero bs=512 count=1 of="$KEY_DEV"
 yes | parted "$KEY_DEV" mklabel msdos
 yes | parted "$KEY_DEV" unit "%" mkpart primary ext2 0 100
 
 echo "overwriting $ROOT_DEV with random data."
-openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$ROOT_DEV_SIZE" -S | dd of="$ROOT_DEV" bs=8M 2>/dev/null
+#openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$ROOT_DEV_SIZE" -S | dd of="$ROOT_DEV" bs=8M 2>/dev/null
 
 echo "overwriting $BOOT_DEV with random data."
-openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$BOOT_DEV_SIZE" -S | dd of="$BOOT_DEV" bs=8M 2>/dev/null
+#openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$BOOT_DEV_SIZE" -S | dd of="$BOOT_DEV" bs=8M 2>/dev/null
 
 # TODO: fix below
 echo "creating a random key"
@@ -95,6 +97,16 @@ mkdir ./mnt
 mount $KEY_DEV ./mnt
 rm -f ./mnt/key
 dd if=/dev/urandom bs=32 count=1 of=./mnt/key
+sync 
 
 echo "creating an encrypted volume on $ROOT_DEV"
-#cryptsetup luksFormat --hash sha256 --cipher aes-cbc-essiv:sha256 --iter-time $ITER_TIME "$ROOT_DEV" ./mnt/key
+cryptsetup luksFormat --hash=sha256 --cipher=aes-cbc-essiv:sha256 --iter-time=$ITER_TIME "$ROOT_DEV" ./mnt/key
+cryptsetup luksOpen "$ROOT_DEV" "freshdisk" --key-file ./mnt/key
+umount ./mnt
+mkfs.ext4 /dev/mapper/freshdisk
+sync
+
+echo "installing debian"
+# TODO: install debian
+
+cryptsetup luksClose "freshdisk"
