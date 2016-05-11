@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#####################################
+## CONFIGURATIONS ###################
+#####################################
+
+# the root device where debian will be installed. the install script will 
+# overwrite this device with random data, create a luks volume on top of 
+# it. inside the root directory is 
+ROOT_DEV=/dev/sda3
+
+# the boot device where /boot will be mounted. 
+BOOT_DEV=/dev/sda7
+
+# the usb key where the key will be placed. this usb key will be needed 
+# everytime the system is booted. 
+KEY_DEV=/dev/sdb
+
+#####################################
+## ADVANCED CONFIGURATIONS ##########
+#####################################
+
+# Do not edit the variables below unless you _REALLY_ know what you are doing. 
+
+# the --iter-time, --cipher, and --hash arguments respectively in 
+# (look at cryptsetup(8) for details)
+ITER_TIME=8000
+CIPHER_SPEC="aes-cbc-essiv:sha256"
+HASH_SPEC="sha256"
+
+# the size of the luks key in bytes
+KEY_SIZE=32
+

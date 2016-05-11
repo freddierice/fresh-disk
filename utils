@@ -1,0 +1,86 @@
+#!/bin/bash
+
+#######################################
+## Include Configuration ##############
+#######################################
+. ./config
+
+#######################################
+## Process Configuration ##############
+#######################################
+# get the device sizes
+ROOT_DEV_SIZE=$(blockdev --getsize64 "$ROOT_DEV")
+BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
+
+#######################################
+## Useful Functions ###################
+#######################################
+
+# make sure that the setup is debian ready
+check_debian_ready() {
+    if [ $ROOT_DEV_SIZE -lt 0 ]; then
+        echo "debian needs more space than $ROOT_DEV"
+        exit 1
+    fi
+}
+
+# overwrite $1 with $2 bytes
+overwrite_device() {
+    openssl enc -aes-256-cbc -iv "$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" -K "$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -ps | tr -d '\n ')" </dev/zero 2>/dev/null | pv -p -s "$2" -S | dd of="$1" bs=8M 2>/dev/null
+}
+
+# check for the root 
+check_root() {
+    if [ "x$(whoami)" != "xroot" ]; then
+        echo "script must be run as root."
+        exit 1
+    fi
+}
+
+# check if $1 is a device that exists
+check_device() {
+    if [ ! -e "$1" ]; then
+        echo "$1 does not exist"
+        exit 1
+    fi
+
+    if [ ! -b "$1" ]; then
+        echo "file $1 is not a block device"
+        exit 1
+    fi
+}
+
+# unmount $1 from the current filesystem wherever possible
+umount_all() {
+    mount | grep "^$1[0-9]\+ " | \
+    while read line; do
+        mpoint="$(echo \"$line\" | cut -d' ' -f3)"
+        mdev="$(echo \"$line\" | cut -d' ' -f1)"
+        umount "$mpoint"
+        if [ $? != 0 ]; then
+            echo "could not umount $mdev from $mpoint."
+            exit 1
+        fi
+    done
+}
+
+# check for each of the binary files
+check_bins() {
+    for b in $@; do 
+        type "$b" >/dev/null 2>&1 || { echo >&2 "$1 is not installed."; exit 1; }
+    done
+}
+
+user_sure() {
+    echo "WARNING: each of these locations will be wiped and data recovery"
+    echo "will be very difficult: "
+    echo "  key   $KEY_DEV"
+    echo "  boot  $BOOT_DEV"
+    echo "  root  $ROOT_DEV"
+    echo "do you want to overwrite each of these locations? (YES/no): "
+    read resp
+
+    if [ "x$resp" != "xYES" ]; then
+        exit 1
+    fi
+}
