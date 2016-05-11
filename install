@@ -3,19 +3,8 @@
 # sourcing
 . ./utils
 
+# make sure the user is aware 
 user_sure
-
-echo "WARNING: each of these locations will be wiped and data recovery"
-echo "will be very difficult: "
-echo "  key   $KEY_DEV"
-echo "  boot  $BOOT_DEV"
-echo "  root  $ROOT_DEV"
-echo "do you want to overwrite each of these locations? (YES/no): "
-read resp
-
-if [ "x$resp" != "xYES" ]; then
-    exit 1
-fi
 
 # check for programs used in the script
 check_bins pv cryptsetup openssl xxd blockdev grub-mkconfig yes parted \
@@ -44,19 +33,20 @@ if [ $? != 0 ]; then
 fi
 
 echo "formatting $KEY_DEV to msdos, one partition"
-dd if=/dev/zero bs=512 count=1 of="$KEY_DEV"
 yes | parted "$KEY_DEV" mklabel msdos
-yes | parted "$KEY_DEV" unit "%" mkpart primary ext2 0 100
+yes | parted "$KEY_DEV" unit "%" mkpart primary 0 100
+sync
+yes | mkfs.ext2 "${KEY_DEV}1" 
 
 echo "overwriting $ROOT_DEV with random data"
-overwrite_device "$ROOT_DEV" "$ROOT_DEV_SIZE"
+#overwrite_device "$ROOT_DEV" "$ROOT_DEV_SIZE"
 
 echo "overwriting $BOOT_DEV with random data"
-overwrite_device "$BOOT_DEV" "$BOOT_DEV_SIZE"
+#overwrite_device "$BOOT_DEV" "$BOOT_DEV_SIZE"
 
 echo "creating a random key"
 mntdir="$(mktemp -d)"
-mount -t ext2 $KEY_DEV "$mntdir"
+mount "${KEY_DEV}1" "$mntdir"
 if [ -e "$mntdir/key" ]; then
     rm -f "$mntdir/key"
 fi
@@ -64,23 +54,25 @@ dd if=/dev/urandom bs=$KEY_SIZE count=1 of="$mntdir/key"
 sync 
 
 echo "creating an encrypted volume on $ROOT_DEV"
-cryptsetup luksFormat --hash=$HASH_SPEC --cipher=$CIPHER_SPEC --iter-time=$ITER_TIME "$ROOT_DEV" "$mntdir/key"
+echo "YES" | cryptsetup luksFormat --hash=$HASH_SPEC --cipher=$CIPHER_SPEC --iter-time=$ITER_TIME "$ROOT_DEV" "$mntdir/key"
 if [ "$?" != "0" ]; then
     echo "error while running cryptsetup luksFormat."
     exit 1
 fi
-freshdisk=/dev/mapper/freshdisk
-while [ -e $freshdisk ]; do
+freshdisk=freshdisk
+while [ -e /dev/mapper/$freshdisk ]; do
     let "l=$RANDOM%10" 
     freshdisk="$freshdisk$l"
 done
 cryptsetup luksOpen "$ROOT_DEV" "$freshdisk" --key-file "$mntdir/key"
 umount "$mntdir"
-mkfs.ext4 "$freshdisk"
-mount "$freshdisk" "$mntdir"
+mkfs.ext4 "/dev/mapper/$freshdisk"
+sync
+mount "/dev/mapper/$freshdisk" "$mntdir"
 
 echo "installing debian"
 # TODO: install debian
 
 # done
-cryptsetup luksClose "freshdisk"
+umount "$mntdir"
+cryptsetup luksClose "/dev/mapper/$freshdisk"
