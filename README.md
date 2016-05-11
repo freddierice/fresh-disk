@@ -7,6 +7,9 @@ point fresh-disk to a boot partition, root partition, and usb key, then
 ```
 will do the rest. 
 
+# requirements
+    * install has only been tested on debian jessie
+
 # features
     * encrypts root partition with cbc mode aes 256
     * automatically adds the debian install to grub
