@@ -1,0 +1,50 @@
+#!/bin/bash
+
+. /tmp/config
+
+# setup fstab
+echo "# /etc/fstab: static file system information." > /etc/fstab
+echo "# fstab configured by freshdisk" >> /etc/fstab
+echo "# " >> /etc/fstab
+echo "# file system    mount point   type    options" >> /etc/fstab
+echo "/dev/mapper/root     /     ext4     defaults     0     1" >> /etc/fstab
+echo "$(mount -l | grep '/boot' | cut -d' ' -f1)     /boot     ext2     ro,nosuid,nodev     0     2" >> /etc/fstab
+
+# setup timezone
+echo "0.0 0 0.0" > /etc/adjtime
+echo "0" >> /etc/adjtime
+echo "UTC" >> /etc/adjtime
+
+# setup the networking
+echo "# loopback device" >> /etc/network/interfaces
+echo "auth lo" >> /etc/network/interfaces
+echo "iface lo inet loopback" >> /etc/network/interfaces
+
+# setup hostname
+echo "$DEBIAN_HOSTNAME" > /etc/hostname
+echo "$DEBIAN_HOSTNAME 127.0.1.1" >> /etc/hosts
+
+# setup apt
+echo "deb-src http://ftp.us.debian.org/debian $DEBIAN_DIST main" >> /etc/apt/sources.list
+echo "deb http://security.debian.org/ $DEBIAN_DIST/updates main" >> /etc/apt/sources.list
+echo "deb-src http://security.debian.org/ $DEBIAN_DIST/updates main" >> /etc/apt/sources.list
+
+# apt-get update and install cryptsetup
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -q
+apt-get install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" cryptsetup console-setup locales linux-image-$DEBIAN_ARCH grub-pc sudo
+
+# setup crypttab
+key_uuid="$(blkid ${KEY_DEV}1 | cut -d' ' -f2 | tail -c +7  | head -c -2)"
+root_uuid="$(blkid ${ROOT_DEV} | cut -d' ' -f2 | tail -c +7  | head -c -2)"
+echo "root UUID=$root_uuid /dev/disk/by-uuid/$key_uuid:/key luks,keyscript=/lib/cryptsetup/scripts/passdev" >> /etc/crypttab
+
+update-initramfs -u
+update-grub
+
+# setup the user accounts
+adduser --disabled-password --gecos "" $DEBIAN_USER
+echo "$DEBIAN_USER:$DEBIAN_PASS" | chpasswd
+adduser $DEBIAN_USER sudo 
+
+

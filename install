@@ -8,12 +8,15 @@ user_sure
 
 # check for programs used in the script
 check_bins pv cryptsetup openssl xxd blockdev grub-mkconfig yes parted \
-           dd sync umount mount mkfs.ext2 grep
+           dd sync umount mount mkfs.ext2 mkfs.ext4 lsblk wget ar grep \
+           debootstrap chroot lsof
 
 # sanity checks
 check_root
 check_device "$ROOT_DEV"
 check_device "$BOOT_DEV"
+
+check_internet
 
 check_debian_ready
 
@@ -21,6 +24,13 @@ check_debian_ready
 echo $KEY_DEV | grep -q "[0-9]"
 if [ $? == 0 ]; then
     echo "key device $KEY_DEV is a partition: expected full disk."
+    exit 1
+fi
+
+echo "making sure that root is not in use"
+if [ "x$(lsblk -l $ROOT_DEV | wc -l)" != "x2" ]; then
+    echo "root device is in use: "
+    lsblk -l "$ROOT_DEV"
     exit 1
 fi
 
@@ -55,6 +65,15 @@ fi
 dd if=/dev/urandom bs=$KEY_SIZE count=1 of="$mntdir/key" &>/dev/null
 sync 
 
+echo "creating the /boot filesystem"
+dd if=/dev/zero bs=4096 count=10 of="$KEY_BOOT" &> /dev/null
+yes | parted "$BOOT_DEV" mklabel msdos &> /dev/null
+yes | parted "$KEY_DEV" unit "%" mkpart primary 0 100 &>/dev/null
+sync
+yes | mkfs.ext2 "${KEY_DEV}1" &>/dev/null
+sync
+
+
 echo "creating an encrypted volume on $ROOT_DEV"
 echo "YES" | cryptsetup luksFormat --hash=$HASH_SPEC --cipher=$CIPHER_SPEC --iter-time=$ITER_TIME "$ROOT_DEV" "$mntdir/key"
 if [ "$?" != "0" ]; then
@@ -68,14 +87,67 @@ while [ -e /dev/mapper/$freshdisk ]; do
 done
 cryptsetup luksOpen "$ROOT_DEV" "$freshdisk" --key-file "$mntdir/key"
 umount "$mntdir"
-mkfs.ext4 "/dev/mapper/$freshdisk" &>/dev/null
-sync
-mount "/dev/mapper/$freshdisk" "$mntdir"
+mkfs.ext4 "/dev/mapper/$freshdisk" &>/dev/null; sync
+mount "/dev/mapper/$freshdisk" "$mntdir"; sync
+mkdir -p "$mntdir/boot"
+mount "$BOOT_DEV" "$mntdir/boot"; sync
 
 echo "installing debian"
-# TODO: install debian
 
-# done
+# initial bootstart
+debootstrap --arch $DEBIAN_ARCH $DEBIAN_DIST "$mntdir" http://ftp.us.debian.org/debian
+
+# mount the special files
+mount -t proc /proc "$mntdir/proc"
+mount -t sysfs /sys "$mntdir/sys"
+mount --bind /dev "$mntdir/dev"
+
+# configure the next system 
+cp debian config "$mntdir/tmp"
+chmod +x "$mntdir/tmp/debian" "$mntdir/tmp/config"
+LANG=C.UTF-8 chroot "$mntdir" /bin/bash "/tmp/debian"
+rm -f "$mntdir/tmp/debian" "$mntdir/tmp/config"; sync
+while [ 1 ]; do
+    lsof +D "$mntdir" | grep -q "^[a-zA-Z0-9]\+ [0-9]\+"
+    if [ "x$?" == "x0" ]; then
+        kill -9 $(lsof +D "$mntdir" | grep -q "^[a-zA-Z0-9]\+ [0-9]\+" | head -n 1 | cut -d' ' -f2)
+    else
+        break
+    fi
+done
 sync
+umount "$mntdir/proc"
+umount "$mntdir/sys"
+umount "$mntdir/dev"
+
+# add the new configuration to grub
+echo "installing freshdisk to grub"
+root_uuid="$(blkid /dev/mapper/$freshdisk | cut -d' ' -f2 | tail -c +7  | head -c -2)"
+boot_uuid="$(blkid $BOOT_DEV | cut -d' ' -f2 | tail -c +7  | head -c -2)"
+boot_entry=/etc/grub.d/40_freshdisk
+boot_vmlinuz=/$(basename $(find "$mntdir/boot" -maxdepth 1 -name "vmlinuz-*" | head -1))
+boot_initrd=/$(basename $(find "$mntdir/boot" -maxdepth 1 -name "initrd.img-*" | head -1))
+
+echo "#\!/bin/bash" > $boot_entry
+echo "exec tail -n +3 \$0" >> $boot_entry
+echo "#" >> $boot_entry
+echo "# freshdisk" >> $boot_entry
+echo "# " >> $boot_entry
+echo ""  >> $boot_entry
+echo "menuentry '$FRESHDISK_NAME' --class debian --class gnu-linux --class gnu --class os  {" >> $boot_entry
+echo "     insmod ext2" >> $boot_entry
+echo "     insmod part_msdos" >> $boot_entry
+echo "     search --fs-uuid --set=root $boot_uuid" >> $boot_entry
+echo "     echo 'starting freshdisk'" >> $boot_entry
+echo "     linux $boot_vmlinuz root=UUID=$root_uuid ro quiet" >> $boot_entry
+echo "     initrd $boot_initrd" >> $boot_entry
+echo "}" >> $boot_entry
+echo "" >> $boot_entry
+
+update-grub
+
+umount "$mntdir/boot"
 umount "$mntdir"
 cryptsetup luksClose "/dev/mapper/$freshdisk"
+
+echo "Installation complete!"

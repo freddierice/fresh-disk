@@ -13,6 +13,10 @@ ROOT_DEV_SIZE=$(blockdev --getsize64 "$ROOT_DEV")
 BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
 
 #######################################
+## Colors #############################
+#######################################
+
+#######################################
 ## Useful Functions ###################
 #######################################
 
@@ -20,6 +24,15 @@ BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
 check_debian_ready() {
     if [ $ROOT_DEV_SIZE -lt 0 ]; then
         echo "debian needs more space than $ROOT_DEV"
+        exit 1
+    fi
+}
+
+# make sure we have internet access 
+check_internet() {
+    curl "canihazip.com/s" &>/dev/null
+    if [ "x$?" != "x0" ]; then
+        echo "script needs an internet connection."
         exit 1
     fi
 }

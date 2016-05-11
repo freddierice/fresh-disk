@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #####################################
-## CONFIGURATIONS ###################
+## Configurations ###################
 #####################################
 
 # the root device where debian will be installed. the install script will 
@@ -17,7 +17,27 @@ BOOT_DEV=/dev/sda7
 KEY_DEV=/dev/sdb
 
 #####################################
-## ADVANCED CONFIGURATIONS ##########
+## Personal Configurations ##########
+#####################################
+
+# debian username and password for first login
+DEBIAN_USER=freshdisk
+DEBIAN_PASS=freshdisk
+
+# distribution of debian
+DEBIAN_DIST=jessie
+
+# architecture
+DEBIAN_ARCH=amd64
+
+# hostname of the new system
+DEBIAN_HOSTNAME=freshdisk
+
+# name that shows up in the grub boot list
+FRESHDISK_NAME=Freshdisk
+
+#####################################
+## Advanced Configurations ##########
 #####################################
 
 # Do not edit the variables below unless you _REALLY_ know what you are doing. 
