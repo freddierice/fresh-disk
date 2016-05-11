@@ -37,6 +37,7 @@ yes | parted "$KEY_DEV" mklabel msdos
 yes | parted "$KEY_DEV" unit "%" mkpart primary 0 100
 sync
 yes | mkfs.ext2 "${KEY_DEV}1" 
+sync
 
 echo "overwriting $ROOT_DEV with random data"
 #overwrite_device "$ROOT_DEV" "$ROOT_DEV_SIZE"
@@ -74,5 +75,6 @@ echo "installing debian"
 # TODO: install debian
 
 # done
+sync
 umount "$mntdir"
 cryptsetup luksClose "/dev/mapper/$freshdisk"
