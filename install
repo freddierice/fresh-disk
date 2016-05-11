@@ -33,10 +33,11 @@ if [ $? != 0 ]; then
 fi
 
 echo "formatting $KEY_DEV to msdos, one partition"
-yes | parted "$KEY_DEV" mklabel msdos
-yes | parted "$KEY_DEV" unit "%" mkpart primary 0 100
+dd if=/dev/zero bs=4096 count=10 of="$KEY_DEV" &> /dev/null
+yes | parted "$KEY_DEV" mklabel msdos &> /dev/null
+yes | parted "$KEY_DEV" unit "%" mkpart primary 0 100 &>/dev/null
 sync
-yes | mkfs.ext2 "${KEY_DEV}1" 
+yes | mkfs.ext2 "${KEY_DEV}1" &>/dev/null
 sync
 
 echo "overwriting $ROOT_DEV with random data"
@@ -51,7 +52,7 @@ mount "${KEY_DEV}1" "$mntdir"
 if [ -e "$mntdir/key" ]; then
     rm -f "$mntdir/key"
 fi
-dd if=/dev/urandom bs=$KEY_SIZE count=1 of="$mntdir/key"
+dd if=/dev/urandom bs=$KEY_SIZE count=1 of="$mntdir/key" &>/dev/null
 sync 
 
 echo "creating an encrypted volume on $ROOT_DEV"
@@ -67,7 +68,7 @@ while [ -e /dev/mapper/$freshdisk ]; do
 done
 cryptsetup luksOpen "$ROOT_DEV" "$freshdisk" --key-file "$mntdir/key"
 umount "$mntdir"
-mkfs.ext4 "/dev/mapper/$freshdisk"
+mkfs.ext4 "/dev/mapper/$freshdisk" &>/dev/null
 sync
 mount "/dev/mapper/$freshdisk" "$mntdir"
 
