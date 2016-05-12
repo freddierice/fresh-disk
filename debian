@@ -22,7 +22,7 @@ echo "iface lo inet loopback" >> /etc/network/interfaces
 
 # setup hostname
 echo "$DEBIAN_HOSTNAME" > /etc/hostname
-echo "$DEBIAN_HOSTNAME 127.0.1.1" >> /etc/hosts
+echo "127.0.1.1 $DEBIAN_HOSTNAME" >> /etc/hosts
 
 # setup apt
 echo "deb-src http://ftp.us.debian.org/debian $DEBIAN_DIST main" >> /etc/apt/sources.list
@@ -32,7 +32,12 @@ echo "deb-src http://security.debian.org/ $DEBIAN_DIST/updates main" >> /etc/apt
 # apt-get update and install cryptsetup
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" cryptsetup console-setup locales linux-image-$DEBIAN_ARCH grub-pc sudo
+apt-get install -q -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" cryptsetup console-setup locales linux-image-$DEBIAN_ARCH grub-pc sudo tasksel
+
+# install any tasksel options
+for t in $DEBIAN_TASKSEL; do
+    tasksel install $t
+done
 
 # setup crypttab
 key_uuid="$(blkid ${KEY_DEV}1 | cut -d' ' -f2 | tail -c +7  | head -c -2)"
@@ -47,4 +52,15 @@ adduser --disabled-password --gecos "" $DEBIAN_USER
 echo "$DEBIAN_USER:$DEBIAN_PASS" | chpasswd
 adduser $DEBIAN_USER sudo 
 
+# put together a startup script
+startup="/home/$DEBIAN_USER/.startup"
+echo "#!/bin/bash" > $startup
+echo "echo finish a few configuration things, and you\'ll be on your way" >> $startup
+echo "sudo dpkg-reconfigure tzdata" >> $startup
+echo "sudo dpkg-reconfigure locales" >> $startup
+echo "sudo tasksel" >> $startup
+echo "cat /home/$DEBIAN_USER/.bashrc | head -n -1 > /home/$DEBIAN_USER/.bashrc_bak" >> $startup
+echo "mv /home/$DEBIAN_USER/.bashrc_bak /home/$DEBIAN_USER/.bashrc" >> $startup
+chmod +x $startup
+echo "$startup" >> /home/$DEBIAN_USER/.bashrc
 

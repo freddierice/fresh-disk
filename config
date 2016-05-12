@@ -21,8 +21,8 @@ KEY_DEV=/dev/sdb
 #####################################
 
 # debian username and password for first login
-DEBIAN_USER=freshdisk
-DEBIAN_PASS=freshdisk
+DEBIAN_USER=anon
+DEBIAN_PASS=anon
 
 # distribution of debian
 DEBIAN_DIST=jessie
@@ -31,10 +31,13 @@ DEBIAN_DIST=jessie
 DEBIAN_ARCH=amd64
 
 # hostname of the new system
-DEBIAN_HOSTNAME=freshdisk
+DEBIAN_HOSTNAME=box
 
 # name that shows up in the grub boot list
-FRESHDISK_NAME=Freshdisk
+FRESHDISK_NAME=Moonlight
+
+# a space separated list of tasks to install 
+DEBIAN_TASKSEL="gnome-desktop laptop"
 
 #####################################
 ## Advanced Configurations ##########

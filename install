@@ -9,7 +9,7 @@ user_sure
 # check for programs used in the script
 check_bins pv cryptsetup openssl xxd blockdev grub-mkconfig yes parted \
            dd sync umount mount mkfs.ext2 mkfs.ext4 lsblk wget ar grep \
-           debootstrap chroot lsof
+           debootstrap chroot lsof fuser
 
 # sanity checks
 check_root
@@ -95,7 +95,7 @@ mount "$BOOT_DEV" "$mntdir/boot"; sync
 echo "installing debian"
 
 # initial bootstart
-debootstrap --arch $DEBIAN_ARCH $DEBIAN_DIST "$mntdir" http://ftp.us.debian.org/debian
+debootstrap --arch $DEBIAN_ARCH $DEBIAN_DIST "$mntdir" http://ftp.us.debian.org/debian &> /dev/null
 
 # mount the special files
 mount -t proc /proc "$mntdir/proc"
@@ -105,20 +105,15 @@ mount --bind /dev "$mntdir/dev"
 # configure the next system 
 cp debian config "$mntdir/tmp"
 chmod +x "$mntdir/tmp/debian" "$mntdir/tmp/config"
-LANG=C.UTF-8 chroot "$mntdir" /bin/bash "/tmp/debian"
+LANG=C.UTF-8 chroot "$mntdir" /bin/bash "/tmp/debian" &> /dev/null
 rm -f "$mntdir/tmp/debian" "$mntdir/tmp/config"; sync
-while [ 1 ]; do
-    lsof +D "$mntdir" | grep -q "^[a-zA-Z0-9]\+ [0-9]\+"
-    if [ "x$?" == "x0" ]; then
-        kill -9 $(lsof +D "$mntdir" | grep -q "^[a-zA-Z0-9]\+ [0-9]\+" | head -n 1 | cut -d' ' -f2)
-    else
-        break
-    fi
-done
 sync
+fuser -km "$mntdir/proc"
 umount "$mntdir/proc"
-umount "$mntdir/sys"
+fuser -km "$mntdir/dev"
 umount "$mntdir/dev"
+fuser -km "$mntdir/sys"
+umount "$mntdir/sys"
 
 # add the new configuration to grub
 echo "installing freshdisk to grub"
@@ -137,16 +132,20 @@ echo ""  >> $boot_entry
 echo "menuentry '$FRESHDISK_NAME' --class debian --class gnu-linux --class gnu --class os  {" >> $boot_entry
 echo "     insmod ext2" >> $boot_entry
 echo "     insmod part_msdos" >> $boot_entry
+echo "     insmod gzio" >> $boot_entry
 echo "     search --fs-uuid --set=root $boot_uuid" >> $boot_entry
 echo "     echo 'starting freshdisk'" >> $boot_entry
-echo "     linux $boot_vmlinuz root=UUID=$root_uuid ro quiet" >> $boot_entry
+echo "     linux $boot_vmlinuz root=UUID=$root_uuid rd.luks.crypttab=yes luks.crypttab=no ro quiet" >> $boot_entry
 echo "     initrd $boot_initrd" >> $boot_entry
 echo "}" >> $boot_entry
 echo "" >> $boot_entry
+chmod +x $boot_entry
 
 update-grub
 
+fuser -km "$mntdir/boot"
 umount "$mntdir/boot"
+fuser -km "$mntdir"
 umount "$mntdir"
 cryptsetup luksClose "/dev/mapper/$freshdisk"
 
