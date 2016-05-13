@@ -20,6 +20,23 @@ BOOT_DEV_SIZE=$(blockdev --getsize64 "$BOOT_DEV")
 ## Useful Functions ###################
 #######################################
 
+# kill any processes using a directory
+kill_mount_procs () {
+	while [ 1 ]; do
+		lsof +D "$1"
+        lsof +D "$1" 2>/dev/null | grep -q "^[a-zA-Z0-9-]\+ [0-9]\+"
+        if [ "x$?" == "x0" ]; then
+			echo "in1"
+			pid=$(lsof +D "$1" 2>/dev/null | grep "^[a-zA-Z0-9-]\+ [0-9]\+" | head -n 1 | cut -d' ' -f2)
+			echo "$pid"
+            kill -9 $pid
+        else
+			echo "out1"
+            break
+        fi
+    done
+}
+
 # make sure that the setup is debian ready
 check_debian_ready() {
     if [ $ROOT_DEV_SIZE -lt 0 ]; then

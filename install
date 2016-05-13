@@ -1,7 +1,21 @@
 #!/bin/bash
 
+starttime=$(date +"%s")
+
 # sourcing
 . ./utils
+
+# check arguments
+if [ "$#" -gt 0 ]; then 
+	echo "too many arguments"
+	exit 1
+fi
+
+# check for required fields
+if [ "x$ROOT_DEV" == "x" ] || [ "x$BOOT_DEV" == "x" ] || [ "x$KEY_DEV" == "x" ]; then
+	echo "ROOT_DEV, BOOT_DEV, and KEY_DEV are required configurations"
+	exit 1
+fi
 
 # make sure the user is aware 
 user_sure
@@ -90,11 +104,9 @@ umount "$mntdir"
 mkfs.ext4 "/dev/mapper/$freshdisk" &>/dev/null; sync
 mount "/dev/mapper/$freshdisk" "$mntdir"; sync
 mkdir -p "$mntdir/boot"
-mount "$BOOT_DEV" "$mntdir/boot"; sync
+mount  "$BOOT_DEV" "$mntdir/boot"; sync
 
 echo "installing debian"
-
-# initial bootstart
 debootstrap --arch $DEBIAN_ARCH $DEBIAN_DIST "$mntdir" http://ftp.us.debian.org/debian &> /dev/null
 
 # mount the special files
@@ -108,12 +120,9 @@ chmod +x "$mntdir/tmp/debian" "$mntdir/tmp/config"
 LANG=C.UTF-8 chroot "$mntdir" /bin/bash "/tmp/debian" &> /dev/null
 rm -f "$mntdir/tmp/debian" "$mntdir/tmp/config"; sync
 sync
-fuser -km "$mntdir/proc"
-umount "$mntdir/proc"
-fuser -km "$mntdir/dev"
-umount "$mntdir/dev"
-fuser -km "$mntdir/sys"
-umount "$mntdir/sys"
+umount -l "$mntdir/proc"
+umount -l "$mntdir/dev"
+umount -l "$mntdir/sys"
 
 # add the new configuration to grub
 echo "installing freshdisk to grub"
@@ -142,11 +151,17 @@ echo "" >> $boot_entry
 chmod +x $boot_entry
 
 update-grub
-
-fuser -km "$mntdir/boot"
-umount "$mntdir/boot"
-fuser -km "$mntdir"
-umount "$mntdir"
-cryptsetup luksClose "/dev/mapper/$freshdisk"
+umount -l "$mntdir/boot"
+umount -l "$mntdir"
+#cryptsetup luksClose "/dev/mapper/$freshdisk"
 
 echo "Installation complete!"
+
+endtime=$(date +"%s")
+total=$(echo "$endtime - $starttime" | bc)
+echo "total time: $total" > testtime
+echo "total time: $total"
+
+echo Press enter when you are ready to reboot.
+read
+reboot

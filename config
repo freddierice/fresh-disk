@@ -7,22 +7,22 @@
 # the root device where debian will be installed. the install script will 
 # overwrite this device with random data, create a luks volume on top of 
 # it. inside the root directory is 
-ROOT_DEV=/dev/sda3
+ROOT_DEV=
 
 # the boot device where /boot will be mounted. 
-BOOT_DEV=/dev/sda7
+BOOT_DEV=
 
 # the usb key where the key will be placed. this usb key will be needed 
 # everytime the system is booted. 
-KEY_DEV=/dev/sdb
+KEY_DEV=
 
 #####################################
 ## Personal Configurations ##########
 #####################################
 
 # debian username and password for first login
-DEBIAN_USER=anon
-DEBIAN_PASS=anon
+DEBIAN_USER=freshdisk
+DEBIAN_PASS=freshdisk
 
 # distribution of debian
 DEBIAN_DIST=jessie
@@ -34,9 +34,9 @@ DEBIAN_ARCH=amd64
 DEBIAN_HOSTNAME=box
 
 # name that shows up in the grub boot list
-FRESHDISK_NAME=Moonlight
+FRESHDISK_NAME=Freshdisk
 
-# a space separated list of tasks to install 
+# a space separated list of tasks to install (can be empty)
 DEBIAN_TASKSEL="gnome-desktop laptop"
 
 #####################################
